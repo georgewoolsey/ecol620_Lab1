@@ -1,0 +1,155 @@
+---
+title: "Lab 1"
+subtitle: "ECOL 620 - Applications in Landscape Ecology"
+author: "George Woolsey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    # code_folding: hide
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding){ 
+    out_dir <- '../';
+    rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, 'index.html')) 
+  })
+---
+
+# Setup
+
+```{r, include=FALSE, warning=F, message=F}
+# knit options
+knitr::opts_chunk$set(
+  echo = TRUE
+  , warning = FALSE
+  , message = FALSE
+  # , results='hide'
+  , fig.width = 10
+  , fig.height = 7
+)
+```
+
+```{r, eval=T}
+# bread-and-butter
+library(tidyverse)
+library(lubridate)
+library(viridis)
+library(scales)
+library(latex2exp)
+# visualization
+library(cowplot)
+library(kableExtra)
+# spatial analysis
+library(USAboundaries)
+library(maps) # maps::map_data()
+library(sf)
+library(mapview) #Interactive maps
+library(leafpop) #map html popup
+```
+
+
+# Rules
+
+1. Using the provided R Markdown template, answer all questions and show your R code where necessary. Note, some questions are just plain text written answers.
+2. Complete your assignment using the R markdown file and submit individual assignments to Canvas. Knit your script and submit an .html file on Canvas. Please use  the following naming convention: lab1_firstname_lastname.html (ex. lab1_kyle_horton.html).  Note, I will not grade labs in any other format.
+
+# Question 1
+
+Briefly describe (1-2 sentences) what each of the following functions achieve. All of these functions are seen throughout the Lab #1 example code. Use complete sentences (1 pt each). 
+
+* `c()` defines a vector to store a list of values.
+* `geom_point()` is from the `ggplot2` package and is used to create a scatter plot of points.
+* `geom_smooth()` is from the `ggplot2` package and is used to create a smoothed line plot of data using specified method (e.g.. linear, loess)
+* `rep()` replicates value(s) a specified number of times.
+* `filter()` is from the `dplyr` package and is used to filter rows in a data frame.
+* `%>%()` specifies a "pipe" to pass an object to the next command for working in the `tidyverse` environment.
+* `st_read()` is from the `sf` package, reads spatial data into R environment.
+* `coord_sf()` is from the `ggplot2` package and is used to define the coordinate system for a plot.
+* `plot_grid()` is from the `cowplot` package and is used to create a grid of multiple plots.
+* `library()` loads a package into the current R environment.
+
+
+# Question 2 
+
+Using the existing code from the lab, plot the contiguous United States with colors representing the area of each state. Note, area is an existing column of information within the `fact_join` data frame. Print your plot and add “Area of US States” as the title. You can follow this link to explore modify axis, legend, and plot labels:https://ggplot2.tidyverse.org/reference/labs.html. (7 pts)
+
+```{r}
+# load and combine tabular data
+states_tabular <- data.frame(
+    name = datasets::state.name
+    , state_area_mi2 = datasets::state.area
+    , state_division = datasets::state.division
+  ) %>% 
+  dplyr::mutate(
+    join_name = toupper(name)
+    , state_area_km2 = state_area_mi2 * 2.58999
+    , region = as.character(state_division)
+  )
+# combine tabular data with spatial data
+states_spatial <- USAboundaries::us_states() %>% 
+  dplyr::mutate(
+    join_name = toupper(state_name)
+    , shape_area_km2 = as.numeric(sf::st_area(.)) / 1e+6
+    , shape_area_mi2 = as.numeric(sf::st_area(.)) / 2.59e+6
+  ) %>% 
+  dplyr::inner_join(states_tabular, by = c("join_name"="join_name"), keep = FALSE) %>% 
+  dplyr::filter(
+    !toupper(state_name) %in% c("ALASKA", "HAWAII")
+  )
+  
+
+ggplot(data=states_spatial) +
+  geom_sf(mapping = aes(fill = state_area_mi2)) +
+  xlab("") +
+  ylab("") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_fill_continuous(labels = scales::comma, name = latex2exp::TeX("Area $mi^2$")) +
+  labs(
+    title = "Area of US States"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 5.5)
+    , axis.text.x = element_text(angle = 35)
+    , panel.border = element_blank()
+    , legend.position = "bottom"
+    , legend.direction = "horizontal"
+    # , legend.margin = margin(0,0,0,0)
+    # , legend.box.margin = margin(-21,0,2,0)
+    , legend.text = element_text(angle = 40, size = 7, vjust = 1, hjust = 1)
+    , legend.title = element_text(size = 7)
+  )
+
+```
+
+# Question 3
+
+Create two common plots using `ggplot` — the scatter plot and the bar plot. For both plots, plot the summed area (in square kilometers, currently the native units are square miles) of US states by geographic region. The necessary datasets to complete this question are already loaded into R, specially you'll need `state.area` and `state.division`. You may also want to link these with `state.name`. For the barplot, shade the bars in your favorite color. For the scatter plot, shade the points with a unique color for each region. Use the `plot_grid` function to make a two-panel vertical plot. See the example on Canvas. (10 pts)
+
+```{r}
+
+```
+
+# Question 4
+
+Using the existing code from the lab, map Colorado colleges and universities within the top 95th quantile of total student enrollment. Use the following line of code to add point labels. This function is in the ggrepel library, which you'll need to install. (7 pts)
+
+`geom_label_repel(data=NAME_OF_YOUR_FILTERED_DATA,  aes(label=NAME, geometry = geometry), stat = "sf_coordinates", force=20, size=2)`
+
+
+```{r}
+
+```
+
+# Question 5
+
+If you went to another university (outside of Colorado), plot that state (if in the US) and the universities that reside in that state. If you haven’t gone to another school (outside of Colorado) or you went to a school outside of the US, pick a US state where you’d like to study, post-doc, or gain employment. For this map, include a county-level shapefile (you’ll need to find this on your own) and be sure to align the coordinate reference systems (crs). Lastly, highlight your alma mater (in blue) or future university where you’d like to reside (in pink). Scale the size and color of the points by “INST_SIZE”. Put the name of the institution in the plot title. See my example, from New York on Canvas. (16 pts)
+
+
+
+```{r}
+
+```
+

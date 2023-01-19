@@ -1,0 +1,416 @@
+---
+title: "Lab 1 - Introduction to R"
+author: "ECOL 620 - Applications in Landscape Ecology"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+linkcolor: blue
+header-includes:
+  - \usepackage{caption}
+  - \captionsetup[figure]{labelformat=empty}
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding){ 
+    out_dir <- '../';
+    rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, 'lab_1_intro_to_R.pdf')) 
+  })
+---
+
+```{r setup, include=F}
+# knit options
+knitr::opts_chunk$set(
+  echo = TRUE
+  , warning = FALSE
+  , message = FALSE
+  , fig.height = 5
+  , fig.width = 7
+  , eval = TRUE
+  , fig.align='center'
+)
+```
+
+#### This lab assignment is meant as an introduction to the spatial capabilities of R. Here, we focus on reading comma separated value (csv) files, reading shapefiles, and plotting spatial data using ggplot2. Download Laboratory #1 materials and store the files locally on your computer.
+
+```{r, echo=FALSE, results='hide'}
+getwd()
+```
+
+
+## RMarkdown
+
+We will be using RMarkdown files to complete your lab assignments. RMarkdown lets you seamlessly interweave R code and a natural language (i.e. English) to create reproducible documents. This document that you are reading now was created using RMarkdown. As you keep reading this document, you will see how well RMarkdown can integrate text and code. You can create .html, .pdf, .doc/.docx, .ppt, and many more types of files using RMarkdown. 
+  
+Every time you open a new Rmarkdown file (.Rmd), you will see an example .Rmd file. Notice how the code is inside "chunks" surrounded by 3 backticks (`) at the top and 3 backticks at the bottom. This tells the markdown file that you are including computer code. Also, notice that right after the first 3 backticks, there is the letter r surrounded by curly brackets ({r}). This tells the markdown file that the computer code inside the chunk was written in the language R.  
+  
+Also, notice that within the curly brackets, you can tell the .Rmd how you want it to display the code. For example, this: `{r echo=FALSE}` would hide the code in your final version of the document. `results = "hide"` will hide the console output from being included in the final version of your document. `message = FALSE` will hide any messages that R gives in the output from being included in the final version of your document. `message = FALSE` is especially useful if you want to show the code you used to load packages because there are usually many messages from this that you wouldn't want to include in the final report.  There are many more options for chunk evaluations, but these are the three most common that you might need. To find more information, google Rmarkdown chunk options
+  
+You can write in English outside of the code chunks, and it's almost just like writing in MS Word. RStudio even has spell check that you can use. In order to *italicize* words or phrases, you need to surround the word with one asterisks (`*`) at the beginning and end of the word/phrase like this (`*word*`). If you want to **bold**, you need to surround the word/phrase with two asterisks (`**`) on each side, like this (`**word**`).
+  
+Another thing that can be a little weird to get used to, is that in order to start a new line of text, you can't just hit enter like you would in Word. You must hit enter twice. The two spaces tells the file to start a new line of text.
+
+Use the knit option at the top of your editor to have Rmarkdown make your file (i.e., .html, .pdf, .doc, etc.). You can make .html or .doc files right away without downloading any more software. If you want to make .pdf's you will need to download more software, and I don't expect you to turn any lab assignments in the .pdf format. In fact, I want all lab assignments turned in using the .html file format.   
+  
+I often knit my .Rmd files many times to make sure that it's coming out the way I want it to.
+
+## Load Packages
+
+We will use the following packages for the examples below
+
+```{r message=F}
+library(tidyverse)
+library(sf)      # Functions to work with shapefiles and KML files
+library(cowplot)
+library(maps) # maps::map_data()
+library(mapproj) # is required for `coord_map()`
+```
+
+### Super basic R primer
+
+We will start be moving through some of the functions of the R coding environment. In many ways, R at its most basic level, can simply act like a calculator. Let's have a look. 
+
+#### Basic calculations
+```{r, results='hide'}
+1+1
+first_stored_value = 4.5+4.5
+(20*first_stored_value)/2
+sqrt(first_stored_value)
+first_stored_value^3
+```
+
+#### Building a vector 
+A vector is the simplest type of data structure in R. Simply put, a vector is a sequence of data elements of the same basic type. Members of a vector are called components. Here is a vector containing six numeric values. 
+```{r}
+first_vector = c(1,2,4,5,7,19)
+class(first_vector)
+```
+
+We can also make a vector by filling the structure with an ordered sequence. 
+```{r}
+seq(from=1, to=10, by=.1)
+```
+
+The `ls` function return a vector of character strings giving the names of the objects in the specified environment. 
+```{r}
+ls()
+```
+
+Let's make three vectors with the aim of uniting them into the columns of a spreadsheet (i.e., data frame)
+
+```{r}
+plot_id = (1:20)
+species_richness = rpois(20, lambda = 10)
+plant_mass = rnorm(mean=20, sd=3, n=20)
+plot_group = rep(LETTERS[seq(from = 1, to = 5)],times=4)
+```
+
+#### Building a data frame 
+A data frame is the most common way of storing data in R and, generally, is the data structure most often used for data analyses. Under the hood, a data frame is a list of equal-length vectors. Each element of the list can be thought of as a column and the length of each element of the list is the number of rows. As a result, data frames can store different classes of objects in each column (i.e. numeric, character, factor). In essence, the easiest way to think of a data frame is as an Excel worksheet that contains columns of different types of data but are all of equal length rows. 
+
+```{r}
+plot_data = cbind.data.frame(plot_id, plot_group, plant_mass, species_richness)
+```
+
+#### Indexing a data frame 
+The elements of a data frame can be extracted by their name, either as an index, or by using the `$` operator.
+```{r}
+plot_data$plot_id
+plot_data$plot_group
+```
+
+Like vectors, values of a data frame can be accessed through indexing. There are different ways to do this, but it is generally easiest to use two numbers in a double index. The first number is for the row number(s) and the second number is for the column number(s).
+```{r}
+plot_data[1,] #1st row
+plot_data[,1] # 1st column
+plot_data[1,4] #1st row, 4th column
+```
+
+#### Subsetting and summarizing a data frame 
+The `%>%` operator is used by the `dplyr` package. We can subset a portion of our data frame to the rows where plot_id equals "4". To do this, we used the `filter` function. 
+```{r}
+plot_data %>% filter(plot_id==4) 
+```
+
+Subset the data frame to the rows where plot_group equals "A". 
+```{r}
+plot_data %>% filter(plot_group=="A") 
+```
+
+We often will want to check the class of our data. If you are encountering an error, I often first check the class of my data to make sure it's what I think it should be, e.g., character, numeric, factor, etc.
+```{r}
+class(plot_data$plot_id)
+class(plot_data$plant_mass)
+class(plot_data$plot_group)
+```
+
+The `str` function will reveal the dimensions of the data frame and the class of each column
+```{r}
+str(plot_data)
+```
+
+We can us the pipe features to group our data (`group_by`), then take a summary (`summarise`) of our data frame (e.g., sample size, mean, min, median, etc.)
+```{r}
+plot_data %>% group_by(plot_group) %>%
+  summarise(n=n(), 
+            mean_species_richness=mean(species_richness),
+            mean_plant_mass=mean(plant_mass))
+```
+
+#### Examining what is in the environment 
+
+We can determine what is in our environment using the `ls` function (also referred to as the *list* function).
+```{r}
+ls()
+```
+
+Remove an item in our environment
+```{r}
+remove("plot_data")
+```
+
+Now we cab clear our environment completely 
+```{r}
+remove(list = ls())
+```
+
+
+#############################################################
+* * *
+### ggplot fun
+ggplot2 is a system for declaratively creating graphics, based on The Grammar of Graphics. You provide the data, tell ggplot2 how to map variables to aesthetics, what graphical primitives to use, and it takes care of the details. You always start with ggplot() and then you supply a dataset and aesthetic mapping (with `aes()`). You then add on layers (like `geom_point()` or `geom_histogram()`), scales (like `scale_colour_brewer()`), faceting specifications (like `facet_wrap()`) and coordinate systems (like `coord_sf()`).
+
+We will use a pre-existing dataset in R to explore plotting.
+```{r}
+iris = iris
+str(iris)
+```
+
+We will first create a blank ggplot canvas. However, we will keep building on this canvas, adding new and more detailed layers.
+```{r}
+ggplot()
+```
+
+Now, let's make our first scatter plot using the `geom_point` function.
+```{r}
+ggplot(data=iris)+
+  geom_point(mapping = aes(x=Sepal.Length, y=Sepal.Width))
+```
+
+Let's add axis labels.
+```{r}
+ggplot(data=iris)+
+  geom_point(mapping=aes(x=Sepal.Length, y=Sepal.Width))+
+  labs(x="Sepal Length (cm)", y="Sepal Width (cm)")
+```
+
+Let's add color to the points, and give different colors by *species*.
+```{r}
+ggplot(data=iris)+
+  geom_point(mapping=aes(x=Sepal.Length, y=Sepal.Width, color=Species))+
+  labs(x="Sepal Length (cm)", y="Sepal Width (cm)")
+```
+
+We can create a more professional plot using the `theme_classic()` aesthetic function. 
+```{r}
+ggplot(data=iris)+
+  geom_point(mapping=aes(x=Sepal.Length, y=Sepal.Width, color=Species))+
+  labs(x="Sepal Length (cm)", y="Sepal Width (cm)")+
+  theme_classic()
+```
+
+Lastly, we can add a lines of best fit from linear regression models done by species using the `geom_smooth()`function.
+```{r}
+ggplot(data=iris)+
+  geom_point(mapping=aes(x=Sepal.Length, y=Sepal.Width, color=Species))+
+  labs(x="Sepal Length (cm)", y="Sepal Width (cm)")+
+  geom_smooth(aes(x=Sepal.Length, y=Sepal.Width,group=Species, colour=Species), formula ='y ~ x',method="lm")+
+  theme_classic()
+```
+
+############################################################# 
+* * *
+### US Maps
+
+Within R, there are some spatial datasets we can manipulate and plot.
+```{r}
+states = as.data.frame(state.x77)
+states$region = tolower(rownames(states))
+```
+
+ggplot has some map data too.
+```{r}
+states_map = map_data("state")
+class(states_map)
+```
+
+
+Let's look to see which states are represented? 
+```{r}
+unique(states_map$region)
+```
+
+Let's merge the two datasets. This merges the *states* data with the spatial information for each state.
+```{r}
+fact_join = left_join(states_map, states, by = "region")
+```
+
+Let's map  *Life Expectancy in Years (1969–71)* by state.
+```{r}
+life_expectancy = ggplot(data=fact_join, mapping=aes(x=long, y=lat, group = group))+
+  geom_polygon(aes(fill = `Life Exp`), colour = "white")+
+  scale_fill_viridis_c(option = "D")+
+  theme_classic()+
+  coord_map("bonne", lat0 = 40)+
+  labs(y = "Latitude", x = "Longitude", fill="Life\nExpectancy")+
+  theme(legend.position = "bottom")
+print(life_expectancy)
+```
+
+Now, let's map *Murder and non-negligent manslaughter rate per 100,000 population (1976)* by state. 
+```{r}
+murder = ggplot(fact_join, aes(long, lat, group = group))+
+  geom_polygon(aes(fill = Murder), color = "white")+
+  scale_fill_viridis_c(option = "B")+
+  theme_classic()+
+  coord_map("bonne", lat0 = 40)+
+  labs(y = "Latitude", x = "Longitude", fill="Manslaughter rate\nper 100,000 people") +
+  theme(legend.position = "bottom") 
+print(murder)
+```
+
+We can used the `plot_grid` function to make aggregate plots. 
+
+We can make the panel plot either horizontal or vertical by changing the `nrow` attribute. 
+```{r}
+plot_grid(life_expectancy, murder, labels = "AUTO", nrow=1)
+```
+
+```{r}
+plot_grid(life_expectancy, murder, labels = "auto", ncol=1)
+```
+
+############################################################# 
+* * *
+### Bring datasets into the R environment. 
+
+
+##### Good data management
+
+1. No spaces within object names (same for names in data files, use . or _ instead).
+2. Don't name an object similar/same as a function (e.g., don't name your data "data.frame").
+3. Can't start object names with a number.
+
+#####  Import data file
+
+Many ways data can be imported 
+Many types of files can be imported (shape files, text files, csv)  
+
+`read.table`     reads any table, can specify which format
+`read.csv`       fields are separated by a comma
+`readxl`         reads Micrsoft Excel files
+
+
+Let's read in a file containing US college and university geographic information.
+```{r}
+us_uni_csv = read.csv("../data/universities.csv")
+```
+
+From the file we just read in, named `us_uni_csv`, let's subset the data frame to just  *Colorado State University*.
+```{r}
+csu = us_uni_csv %>% filter(NAME=="Colorado State University")
+print(csu)
+```
+
+Now, let's subset to the state of Colorado.
+```{r}
+colorado_universities = us_uni_csv %>% filter(LSTATE=="CO")
+head(colorado_universities)
+```
+
+How many institutions reside in Colorado? 
+```{r}
+nrow(colorado_universities)
+```
+
+What else is in this data frame? We see that data frame includes information on the Total Enrollment, e.g.,`$TOT_ENROLL`, and many other pieces of information. 
+```{r}
+str(colorado_universities)
+```
+
+You can explore some simple statistics on total enrollment and the other metrics if you follow this link: https://www.sciencebase.gov/catalog/item/4f4e4acee4b07f02db67fb39. 
+
+Let's make a plot of the distribution of the *Total Enrollment* across Colorado institutions of higher education. 
+```{r}
+ggplot(data=colorado_universities)+
+  geom_histogram(mapping=aes(TOT_ENROLL), bins = 10, fill="darkgreen")+
+  theme_classic()+
+  labs(y = "# of Universities", x = "Total Enrollment")+
+  theme(text = element_text(size=15))
+```
+
+We can explore the `range` of enrollment and the determine the `mean`.
+```{r}
+range(colorado_universities$TOT_ENROLL)
+mean(colorado_universities$TOT_ENROLL)
+```
+
+Let's say we need to share our subset data frame with a collaborator. Currently, our Colorado-specific dataset only lives within R. We need to output the data frame. A common format is a *.csv*, which stands for comma separated values. 
+```{r}
+write.csv(colorado_universities, "colorado_universities.csv", row.names=F)
+
+#if you're working with large datasets, it's good to use fwrite and fread from the data.table package
+```
+
+
+Let's make a shapefile of the locations using the `sf` package commands
+```{r}
+colorado_universities_shp = st_as_sf(colorado_universities, coords = c("LON", "LAT"), crs = "+proj=longlat +datum=WGS84")
+```
+
+
+Like the previous example, our collaborator needs a shapefile of the Colorado institutions. Let's fill that request by outputting a shapefile using the `st_write` function. 
+```{r}
+st_write(colorado_universities_shp, "../data/collegesuniversities.shp", driver = "ESRI Shapefile", delete_layer = TRUE)
+```
+
+Now, let's read the shapefile of the Colorado institutions that you just created.
+```{r}
+colorado_universities_shp = st_read("../data/collegesuniversities.shp")
+colorado_universities_shp = st_transform(colorado_universities_shp, "epsg:4326") #this command allows you reproject your shapefile. 
+```
+
+Read in a Colorado county shapefile
+```{r}
+co_counties = st_read("../data/colorado_county_boundaries.shp") #this might take a couple of seconds to load
+co_counties = st_transform(co_counties, "epsg:4326") #this will transform the coordinates to WGS84
+```
+
+
+Let's plot just the schools with enrollment over 1000 students. First, we will use the `subset` function. Because we are now working with a shapefile, or class `sp`, the `dplyr::filter` function will not work. It needs to be a dataframe. However, to plot these data using `ggplot`, the shapefile will need to converted to a dataframe.  
+```{r}
+colorado_universities_shp = subset(colorado_universities_shp, TOT_ENROLL>1000)
+```
+
+Let's determine the range and save the values. We will use these stored values below for plotting
+```{r}
+min_enroll=min(colorado_universities_shp$TOT_ENROLL)
+max_enroll=max(colorado_universities_shp$TOT_ENROLL)
+```
+
+Use ggplot to map a state map
+```{r}
+CO_MAP_UNI=ggplot() +
+  geom_sf(data = co_counties,  fill = NA, color ="black", lwd=.1) +
+  geom_sf(data = colorado_universities_shp, aes(size=TOT_ENROLL, colour=TOT_ENROLL), alpha=.9) +
+  theme_bw()+
+  theme(panel.grid.minor=element_blank(),panel.grid.major=element_blank())+
+  theme( panel.border=element_blank())+
+  scale_colour_viridis_c(limits=c(min_enroll, max_enroll), breaks=seq(5000, 30000, by=5000), name = "Total\nenrollment")+
+  guides(color= guide_legend(), size=guide_legend())+
+  scale_size_continuous(limits=c(min_enroll, max_enroll), breaks=seq(5000, 30000, by=5000),name = "Total\nenrollment")+
+  labs(y = "Latitude", x = "Longitude")
+CO_MAP_UNI
+```
+
+
