@@ -12,7 +12,8 @@ editor_options:
   chunk_output_type: console
 knit: (function(inputFile, encoding){ 
     out_dir <- '../';
-    rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, 'index.html')) 
+    rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, 'index.html'));
+    rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, '/data/lab1_george_woolsey.html')) 
   })
 ---
 
@@ -160,7 +161,7 @@ plt_reg_area_bar <- ggplot(data = dta_temp) +
     , vjust = -0.5
   ) +
   labs(
-      title = "Area of US States by Region"
+      title = "Area of US States by Geographic Region"
     ) +
   xlab("") +
   ylab(latex2exp::TeX("Area $km^2$")) +
