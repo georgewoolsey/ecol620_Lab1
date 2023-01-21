@@ -1,3 +1,3 @@
-# Multilevel/Hierarchical Models Gelman and Hill (2007)
+# ECOL 620 - Lab 1 - George Woolsey
 
-[**Project site**](https://georgewoolsey.github.io/ess575_MultilevelHierarchicalModels_GelmanHill/)
+[**Project site**](https://georgewoolsey.github.io/ecol620_Lab1/)
