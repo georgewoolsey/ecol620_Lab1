@@ -38,6 +38,7 @@ library(viridis)
 library(scales)
 library(latex2exp)
 # visualization
+library(ggrepel)
 library(cowplot)
 library(kableExtra)
 # spatial analysis
@@ -96,28 +97,42 @@ states_spatial <- USAboundaries::us_states() %>%
   dplyr::inner_join(states_tabular, by = c("join_name"="join_name"), keep = FALSE) %>% 
   dplyr::filter(
     !toupper(state_name) %in% c("ALASKA", "HAWAII")
+  ) %>% 
+  dplyr::mutate(
+    area_rank = dplyr::min_rank(-state_area_km2)
+    , map_label = ifelse(area_rank < 41,  paste0(stusps, "\n#", area_rank), "")
   )
   
-
+# create chloropleth of state area
 ggplot(data=states_spatial) +
   geom_sf(mapping = aes(fill = state_area_mi2)) +
+  geom_sf_label(
+    mapping = aes(label = map_label)
+    , label.size = NA
+    , alpha = 0
+    , size = 2.5
+    , color = "gray90"
+  ) +
   xlab("") +
   ylab("") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
-  scale_fill_continuous(labels = scales::comma, name = latex2exp::TeX("Area $mi^2$")) +
+  scale_fill_viridis_c(
+    option = "mako", direction = -1
+    , labels = scales::comma, name = latex2exp::TeX("Area $mi^2$")
+  ) +
   labs(
     title = "Area of US States"
+    , caption = "*with rank of conterminous states by area"
   ) +
   theme_bw() +
   theme(
     axis.text = element_text(size = 5.5)
     , axis.text.x = element_text(angle = 35)
+    , panel.grid = element_blank()
     , panel.border = element_blank()
     , legend.position = "bottom"
     , legend.direction = "horizontal"
-    # , legend.margin = margin(0,0,0,0)
-    # , legend.box.margin = margin(-21,0,2,0)
     , legend.text = element_text(angle = 40, size = 7, vjust = 1, hjust = 1)
     , legend.title = element_text(size = 7)
   )
@@ -129,7 +144,55 @@ ggplot(data=states_spatial) +
 Create two common plots using `ggplot` — the scatter plot and the bar plot. For both plots, plot the summed area (in square kilometers, currently the native units are square miles) of US states by geographic region. The necessary datasets to complete this question are already loaded into R, specially you'll need `state.area` and `state.division`. You may also want to link these with `state.name`. For the barplot, shade the bars in your favorite color. For the scatter plot, shade the points with a unique color for each region. Use the `plot_grid` function to make a two-panel vertical plot. See the example on Canvas. (10 pts)
 
 ```{r}
+# summarize data by region
+dta_temp <- states_tabular %>% 
+  dplyr::group_by(region) %>% 
+  dplyr::summarise(
+    area_km2 = sum(state_area_km2, na.rm = TRUE)
+    , count_states = dplyr::n()
+  )
+# bar plot
+plt_reg_area_bar <- ggplot(data = dta_temp) +
+  geom_col(aes(x = reorder(region, -area_km2), y = area_km2), color = "gray23", width = 0.7) +
+  geom_text(
+    aes(x = reorder(region, -area_km2), y = area_km2, label = scales::comma(area_km2, accuracy = 1))
+    , color = "black", size = 2.5
+    , vjust = -0.5
+  ) +
+  labs(
+      title = "Area of US States by Region"
+    ) +
+  xlab("") +
+  ylab(latex2exp::TeX("Area $km^2$")) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_bw() +
+  theme(
+    legend.position = "none"
+    , axis.text.x = element_text(angle = 35, hjust = 1, vjust = 1)
+  )
+# scatter plot
+plt_reg_area_scatter <- ggplot(data = dta_temp) +
+  geom_point(aes(x = count_states, y = area_km2, color = region, size = area_km2)) +
+  ggrepel::geom_text_repel(aes(x = count_states, y = area_km2, label = region), size = 3) +
+  xlab("# States") +
+  ylab(latex2exp::TeX("Area $km^2$")) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_viridis_d(option = "turbo") +
+  theme_bw() +
+  theme(
+    legend.position = "none"
+  )
+# combine plots vertically
+cowplot::plot_grid(
+  plotlist =  list(plt_reg_area_bar, plt_reg_area_scatter)
+  , ncol = 1
+  , rel_heights = c(1,0.8)
+)
+```
 
+```{r, warning=FALSE, message=FALSE, echo=FALSE, include=FALSE}
+remove(list = ls()[grep("_temp",ls())])
+gc()
 ```
 
 # Question 4
@@ -138,18 +201,113 @@ Using the existing code from the lab, map Colorado colleges and universities wit
 
 `geom_label_repel(data=NAME_OF_YOUR_FILTERED_DATA,  aes(label=NAME, geometry = geometry), stat = "sf_coordinates", force=20, size=2)`
 
+## Load Data
 
 ```{r}
+# read in university data
+us_uni_spatial <- read.csv("../data/universities.csv") %>% 
+  # convert to spatial
+  sf::st_as_sf(., coords = c("LON", "LAT"), crs = "+proj=longlat +datum=WGS84") %>% 
+  # transform to coordinate system of state data
+  sf::st_transform(crs = sf::st_crs(states_spatial))
+```
 
+## Create Function to Map
+
+This function allows for the user to define the state, filter by percent rank of universities based on enrollment, select a variable to scale the size and color of the points, and the option to highlight a specific university (or university list).
+
+
+```{r}
+# map function
+fn_map_universities <- function(my_state = "CO", my_pct_rank_filter = 0.95, my_uni = c(), my_point_size_var = "TOT_ENROLL") {
+  uni_temp <- us_uni_spatial %>% 
+    dplyr::filter(LSTATE==my_state) %>% 
+    dplyr::mutate(
+      enrollment_pct_rank = dplyr::percent_rank(TOT_ENROLL)
+    ) %>% 
+    dplyr::filter(
+      enrollment_pct_rank >= my_pct_rank_filter
+      & !NAME %in% my_uni
+    )
+  plt_temp <- ggplot() +
+      geom_sf(
+        data = USAboundaries::us_counties(states = my_state)
+        , alpha = 0, lwd = 0.5, color = "black"
+      ) +
+      geom_sf(
+        data = USAboundaries::us_states(states = my_state)
+        , alpha = 0, lwd = 1, color = "black"
+      ) +
+      geom_sf(
+        data = uni_temp
+        , aes_string(size = my_point_size_var, color = my_point_size_var)
+      ) +
+      ggrepel::geom_label_repel(
+        data=uni_temp
+        , aes(label=NAME, geometry = geometry)
+        , stat = "sf_coordinates"
+        , force=20
+        , size=2
+        , color = "gray25"
+        , min.segment.length = 0
+      ) +
+      scale_color_viridis_c(option = "viridis") +
+      xlab("") +
+      ylab("") +
+      scale_x_continuous(expand = c(0, 0)) +
+      scale_y_continuous(expand = c(0, 0)) +
+      theme_bw() +
+      theme(
+        axis.text = element_text(size = 5.5)
+        , axis.text.x = element_text(angle = 35)
+        , panel.grid = element_blank()
+        , panel.border = element_blank()
+        , legend.position = "none"
+      )
+      
+  if(length(my_uni)==0){(plt_temp)}else{(
+      plt_temp +
+       geom_sf(
+          data = us_uni_spatial %>% 
+            dplyr::filter(LSTATE==my_state, NAME %in% my_uni)
+          # , aes_string(size = my_point_size_var)
+          , size = 6
+          , color = "royalblue"
+        ) +
+        ggrepel::geom_label_repel(
+          data = us_uni_spatial %>% 
+            dplyr::filter(LSTATE==my_state, NAME %in% my_uni)
+          , aes(label=NAME, geometry = geometry)
+          , stat = "sf_coordinates"
+          , force=20
+          , size=2
+          , color = "black"
+          , min.segment.length = 0
+        ) +
+        labs(
+          title = paste0(my_uni, collapse = ", ")
+          , subtitle = "colored as blue"
+        ) +
+        theme(
+          plot.subtitle = element_text(size=8, face="italic", color="royalblue", margin = margin(0,0,0,0))
+        )
+    )}
+}
+# print map using function created above
+fn_map_universities(my_state = "CO", my_pct_rank_filter = 0.95, my_point_size_var = "TOT_ENROLL")
 ```
 
 # Question 5
 
 If you went to another university (outside of Colorado), plot that state (if in the US) and the universities that reside in that state. If you haven’t gone to another school (outside of Colorado) or you went to a school outside of the US, pick a US state where you’d like to study, post-doc, or gain employment. For this map, include a county-level shapefile (you’ll need to find this on your own) and be sure to align the coordinate reference systems (crs). Lastly, highlight your alma mater (in blue) or future university where you’d like to reside (in pink). Scale the size and color of the points by “INST_SIZE”. Put the name of the institution in the plot title. See my example, from New York on Canvas. (16 pts)
 
-
-
 ```{r}
-
+# print map using function created above
+fn_map_universities(
+  my_state = "CA"
+  , my_pct_rank_filter = 0.95
+  , my_point_size_var = "INST_SIZE"
+  , my_uni = c("University of San Diego", "San Diego State University")
+)
 ```
 
