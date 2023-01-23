@@ -173,8 +173,7 @@ plt_reg_area_bar <- ggplot(data = dta_temp) +
   )
 # scatter plot
 plt_reg_area_scatter <- ggplot(data = dta_temp) +
-  geom_point(aes(x = count_states, y = area_km2, color = region, size = area_km2)) +
-  ggrepel::geom_text_repel(aes(x = count_states, y = area_km2, label = region), size = 3) +
+  geom_point(aes(x = reorder(region, -area_km2), y = area_km2, color = region), size = 3) +
   xlab("# States") +
   ylab(latex2exp::TeX("Area $km^2$")) +
   scale_y_continuous(labels = scales::comma) +
@@ -182,6 +181,7 @@ plt_reg_area_scatter <- ggplot(data = dta_temp) +
   theme_bw() +
   theme(
     legend.position = "none"
+    , axis.text.x = element_text(angle = 35, hjust = 1, vjust = 1)
   )
 # combine plots vertically
 cowplot::plot_grid(
@@ -204,111 +204,165 @@ Using the existing code from the lab, map Colorado colleges and universities wit
 
 ## Load Data
 
+Load in the university data, transform to spatial, and create ranking of enrollment variable by state
+
 ```{r}
 # read in university data
 us_uni_spatial <- read.csv("../data/universities.csv") %>% 
   # convert to spatial
   sf::st_as_sf(., coords = c("LON", "LAT"), crs = "+proj=longlat +datum=WGS84") %>% 
   # transform to coordinate system of state data
-  sf::st_transform(crs = sf::st_crs(states_spatial))
+  sf::st_transform(crs = sf::st_crs(states_spatial)) %>% 
+  # create ranking of enrollment variable by state
+  dplyr::group_by(LSTATE) %>% 
+  dplyr::mutate(
+    enrollment_pct_rank = dplyr::percent_rank(TOT_ENROLL)
+    , INST_SIZE = as.factor(INST_SIZE)
+  ) %>% 
+  dplyr::ungroup()
 ```
 
-## Create Function to Map
+## Create Map
 
-This function allows for the user to define the state, filter by percent rank of universities based on enrollment, select a variable to scale the size and color of the points, and the option to highlight a specific university (or university list).
+Map Colorado colleges and universities within the top 95th quantile of total student enrollment
 
 
 ```{r}
-# map function
-fn_map_universities <- function(my_state = "CO", my_pct_rank_filter = 0.95, my_uni = c(), my_point_size_var = "TOT_ENROLL") {
-  uni_temp <- us_uni_spatial %>% 
-    dplyr::filter(LSTATE==my_state) %>% 
-    dplyr::mutate(
-      enrollment_pct_rank = dplyr::percent_rank(TOT_ENROLL)
-    ) %>% 
-    dplyr::filter(
-      enrollment_pct_rank >= my_pct_rank_filter
-      & !NAME %in% my_uni
-    )
-  plt_temp <- ggplot() +
-      geom_sf(
-        data = USAboundaries::us_counties(states = my_state)
-        , alpha = 0, lwd = 0.5, color = "black"
-      ) +
-      geom_sf(
-        data = USAboundaries::us_states(states = my_state)
-        , alpha = 0, lwd = 1, color = "black"
-      ) +
-      geom_sf(
-        data = uni_temp
-        , aes_string(size = my_point_size_var, color = my_point_size_var)
-      ) +
-      ggrepel::geom_label_repel(
-        data=uni_temp
-        , aes(label=NAME, geometry = geometry)
-        , stat = "sf_coordinates"
-        , force=20
-        , size=2
-        , color = "gray25"
-        , min.segment.length = 0
-      ) +
-      scale_color_viridis_c(option = "viridis") +
-      xlab("") +
-      ylab("") +
-      scale_x_continuous(expand = c(0, 0)) +
-      scale_y_continuous(expand = c(0, 0)) +
-      theme_bw() +
-      theme(
-        axis.text = element_text(size = 5.5)
-        , axis.text.x = element_text(angle = 35)
-        , panel.grid = element_blank()
-        , panel.border = element_blank()
-        , legend.position = "none"
-      )
-      
-  if(length(my_uni)==0){(plt_temp)}else{(
-      plt_temp +
-       geom_sf(
-          data = us_uni_spatial %>% 
-            dplyr::filter(LSTATE==my_state, NAME %in% my_uni)
-          # , aes_string(size = my_point_size_var)
-          , size = 6
-          , color = "royalblue"
-        ) +
-        ggrepel::geom_label_repel(
-          data = us_uni_spatial %>% 
-            dplyr::filter(LSTATE==my_state, NAME %in% my_uni)
-          , aes(label=NAME, geometry = geometry)
-          , stat = "sf_coordinates"
-          , force=20
-          , size=2
-          , color = "black"
-          , min.segment.length = 0
-        ) +
-        labs(
-          title = paste0(my_uni, collapse = ", ")
-          , subtitle = "colored as blue"
-        ) +
-        theme(
-          plot.subtitle = element_text(size=8, face="italic", color="royalblue", margin = margin(0,0,0,0))
-        )
-    )}
-}
-# print map using function created above
-fn_map_universities(my_state = "CO", my_pct_rank_filter = 0.95, my_point_size_var = "TOT_ENROLL")
+# filter data
+my_state <- "CO"
+uni_temp <- us_uni_spatial %>% 
+  dplyr::filter(LSTATE==my_state) %>% 
+  dplyr::filter(
+    enrollment_pct_rank >= 0.95
+  )
+# map
+  ggplot() +
+    geom_sf(
+      data = USAboundaries::us_counties(states = my_state)
+      , alpha = 0, lwd = 0.5, color = "black"
+    ) +
+    geom_sf(
+      data = USAboundaries::us_states(states = my_state)
+      , alpha = 0, lwd = 1, color = "black"
+    ) +
+    geom_sf(
+      data = uni_temp
+      , aes(size = TOT_ENROLL, color = TOT_ENROLL)
+    ) +
+    ggrepel::geom_label_repel(
+      data = uni_temp
+      , aes(label=NAME, geometry = geometry)
+      , stat = "sf_coordinates"
+      , force=20
+      , size=2
+      , color = "gray25"
+      , min.segment.length = 0
+    ) +
+    scale_color_viridis_c(
+      option = "viridis"
+      , labels = scales::comma, name = "Enrollment"
+    ) +
+    xlab("") +
+    ylab("") +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme_bw() +
+    theme(
+      axis.text = element_text(size = 5.5)
+      , axis.text.x = element_text(angle = 35)
+      , panel.grid = element_blank()
+      , panel.border = element_blank()
+      , legend.position = "bottom"
+      , legend.direction = "horizontal"
+      , legend.text = element_text(angle = 40, size = 7, vjust = 1, hjust = 1)
+      , legend.title = element_text(size = 7)
+    ) +
+    guides(size = "none")
 ```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, include=FALSE}
+remove(list = ls()[grep("_temp",ls())])
+gc()
+```
+
 
 # Question 5
 
 If you went to another university (outside of Colorado), plot that state (if in the US) and the universities that reside in that state. If you haven’t gone to another school (outside of Colorado) or you went to a school outside of the US, pick a US state where you’d like to study, post-doc, or gain employment. For this map, include a county-level shapefile (you’ll need to find this on your own) and be sure to align the coordinate reference systems (crs). Lastly, highlight your alma mater (in blue) or future university where you’d like to reside (in pink). Scale the size and color of the points by “INST_SIZE”. Put the name of the institution in the plot title. See my example, from New York on Canvas. (16 pts)
 
 ```{r}
-# print map using function created above
-fn_map_universities(
-  my_state = "CA"
-  , my_pct_rank_filter = 0.95
-  , my_point_size_var = "INST_SIZE"
-  , my_uni = c("University of San Diego", "San Diego State University")
-)
+my_state <- "CA"
+my_uni <- c("University of San Diego", "San Diego State University")
+my_pct_rnk <- 0.7
+# map
+  ggplot() +
+    geom_sf(
+      data = USAboundaries::us_counties(states = my_state)
+      , alpha = 0, lwd = 0.5, color = "black"
+    ) +
+    geom_sf(
+      data = USAboundaries::us_states(states = my_state)
+      , alpha = 0, lwd = 1, color = "black"
+    ) +
+    geom_sf(
+      data = 
+        us_uni_spatial %>% 
+          dplyr::filter(LSTATE==my_state & !NAME %in% my_uni) %>% 
+          dplyr::filter(
+            enrollment_pct_rank >= my_pct_rnk
+          )
+      , aes(size = INST_SIZE, color = INST_SIZE)
+    ) +
+    ggrepel::geom_label_repel(
+      data = 
+        us_uni_spatial %>% 
+          dplyr::filter(LSTATE==my_state & !NAME %in% my_uni) %>% 
+          dplyr::filter(
+            enrollment_pct_rank >= my_pct_rnk
+          )
+      , aes(label=NAME, geometry = geometry)
+      , stat = "sf_coordinates"
+      , size=2
+      , color = "gray25"
+      , min.segment.length = 0
+    ) +
+   geom_sf(
+      data = us_uni_spatial %>% 
+        dplyr::filter(LSTATE==my_state & NAME %in% my_uni)
+      , aes(size = INST_SIZE)
+      , color = "royalblue"
+      , show.legend = FALSE
+    ) +
+    ggrepel::geom_label_repel(
+      data = us_uni_spatial %>% 
+        dplyr::filter(LSTATE==my_state, NAME %in% my_uni)
+      , aes(label=NAME, geometry = geometry)
+      , stat = "sf_coordinates"
+      , force=20
+      , size=2.5
+      , color = "black"
+      , min.segment.length = 0
+    ) +
+    scale_color_viridis_d(option = "viridis") +
+    labs(
+      title = paste0(my_uni, collapse = ", ")
+      , subtitle = "colored as blue"
+      , color = "Inst. Size"
+      , size = "Inst. Size"
+    ) +
+    xlab("") +
+    ylab("") +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme_bw() +
+    theme(
+      axis.text = element_text(size = 5.5)
+      , axis.text.x = element_text(angle = 35)
+      , panel.grid = element_blank()
+      , panel.border = element_blank()
+      , legend.position = "bottom"
+      , legend.direction = "horizontal"
+      , plot.subtitle = element_text(size=8, face="italic", color="royalblue", margin = margin(0,0,0,0))
+    )
 ```
 
